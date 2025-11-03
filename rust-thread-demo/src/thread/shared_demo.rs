@@ -1,7 +1,9 @@
+use std::cell::OnceCell;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use std::sync::{mpsc, Arc, Condvar, Mutex, OnceLock, RwLock};
 use std::thread;
+use std::time::Duration;
 
 // # 多线程数据共享方式对比
 //
@@ -182,6 +184,19 @@ pub fn atomic_aba_demo() {
     println!("all done! ✅ ✅ ✅ ");
 }
 
+// OnceCell 是 Rust 标准库提供的一种线程安全的单次初始化机制。
+// 它允许多个线程同时访问一个单元格，但只能有一个线程初始化它。
+// 适用于需要单次初始化一个值的场景。
+pub fn once_cell_demo() {
+    let cell = OnceCell::new();
+
+    cell.set(42).unwrap(); // ✅ 首次设置成功
+    assert_eq!(cell.get(), Some(&42));
+
+    // cell.set(99).unwrap(); // ❌ 再次设置会 panic
+    println!("once cell = {}", cell.get().unwrap());
+    println!("all done! ✅ ✅ ✅ ");
+}
 
 
 // OnceLock 是 Rust 标准库提供的一种线程安全的单次初始化机制。
@@ -204,6 +219,9 @@ pub fn once_lock_demo() {
         });
     });
 
+    // `join()` 会阻塞当前线程直到子线程执行完毕，
+    // `unwrap()` 用于处理 join 返回的 Result（如果线程出现 panic 会导致 Err）。
+    // 该调用确保 handle1 线程已经运行结束，并在出现错误时直接 panic。
     handle1.join().unwrap();
     handle2.join().unwrap();
 
@@ -212,18 +230,28 @@ pub fn once_lock_demo() {
     println!("all done! ✅ ✅ ✅ ");
 }
 
-// 使用 Arc<OnceLock<T>> 进行多线程共享
-pub fn once_cell_demo() {
-    let once_cell = Arc::new(OnceLock::new());
-    let once_cell_clone = Arc::clone(&once_cell);
-
-    let handle = thread::spawn(move || {
-        once_cell_clone.set(1).unwrap();
-        println!("Thread set value to 1");
+// Lazycell 是 Rust 标准库提供的一种线程安全的延迟初始化机制。
+// 它允许多个线程同时访问一个单元格，但只能有一个线程初始化它。
+// 适用于需要延迟初始化一个值的场景。
+pub fn lazy_cell_demo() {
+    let lazy_cell = std::cell::LazyCell::new(|| {
+        println!("LazyCell initialized");
+        42
     });
+    println!("lazy cell = {}", *lazy_cell);
+    println!("all done! ✅ ✅ ✅ ");
+}
 
-    handle.join().unwrap();
-    println!("once cell = {}", once_cell.get().unwrap());
+// LazyLock 是 Rust 标准库提供的一种线程安全的延迟初始化机制。
+// 它允许多个线程同时访问一个单元格，但只能有一个线程初始化它。
+// 适用于需要延迟初始化一个值的场景。
+#[allow(dead_code)]
+pub fn lazy_lock_demo() {
+    let lazy_lock = std::sync::LazyLock::new(|| {
+        println!("LazyLock initialized");
+        42
+    });
+    println!("lazy lock = {}", *lazy_lock);
     println!("all done! ✅ ✅ ✅ ");
 }
 
@@ -306,4 +334,67 @@ pub fn rayon_crate_demo() {
 }
 
 
+// thread parking 演示：线程挂起和唤醒
+pub fn thread_parking_demo() {
+  
+    let t = thread::spawn(|| {
+        println!("子线程开始执行...");
+        thread::park(); // 暂停自己
+        println!("子线程被唤醒，继续执行...");
+    });
 
+    thread::sleep(Duration::from_secs(2));
+    println!("主线程唤醒子线程...");
+    t.thread().unpark(); // 唤醒
+    t.join().unwrap();
+    println!("all done! ✅ ✅ ✅ ");
+}
+
+
+
+// 带超时的 park 演示
+pub fn thread_parking_demo_with_timeout() {
+    let handle = std::thread::spawn(move || {
+        println!("等待 2 秒或被唤醒...");
+        std::thread::park_timeout(std::time::Duration::from_secs(2));
+        println!("继续执行");
+    });
+
+    std::thread::sleep(std::time::Duration::from_secs(1));
+    handle.thread().unpark(); // 如果注释掉这行，2 秒后自动恢复
+    handle.join().unwrap();
+    println!("all done! ✅ ✅ ✅ ");
+}
+
+pub fn thread_parking_demo_with_timeout_and_result() {
+    
+        let tasks = Arc::new(Mutex::new(vec![]));
+        let worker = {
+            let tasks = Arc::clone(&tasks);
+            thread::spawn(move || {
+                loop {
+                    let task_opt = {
+                        let mut tasks = tasks.lock().unwrap();
+                        tasks.pop()
+                    };
+                    if let Some(task) = task_opt {
+                        println!("执行任务: {}", task);
+                    } else {
+                        println!("无任务，线程休眠...");
+                        thread::park(); // 等待唤醒
+                    }
+                }
+            })
+        };
+    
+        thread::sleep(Duration::from_secs(2));
+        {
+            let mut tasks = tasks.lock().unwrap();
+            tasks.push("任务A".to_string());
+        }
+        println!("主线程添加任务并唤醒工作线程");
+        worker.thread().unpark();
+    
+        thread::sleep(Duration::from_secs(1));
+        println!("主线程结束");
+    }   

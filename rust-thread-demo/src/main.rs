@@ -8,5 +8,10 @@ fn main() {
     // thread::shared_demo::read_write_demo();
     // thread::shared_demo::mpsc_demo();
     // thread::shared_demo::atomic_counter_demo();
-    thread::shared_demo::atomic_aba_demo();
+    // thread::shared_demo::atomic_aba_demo();
+    // thread::shared_demo::once_cell_demo();
+    // thread::shared_demo::lazy_lock_demo();
+    // thread::shared_demo::thread_parking_demo();
+    thread::shared_demo::thread_parking_demo_with_timeout_and_result();
 }
+
